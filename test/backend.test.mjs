@@ -117,3 +117,18 @@ test('HTTP API enforces authentication and origin, and runs browse â†’ details â
  const streams=await (await call('/api/providers/demo.open-films/streams',{link:details.data.linkList[0].directLinks[0].link,type:'movie'})).json();assert.equal(streams.items.length,2);
  }finally{await new Promise(resolve=>server.close(resolve));await cleanup(directory);}
 });
+
+
+test('built-in app access allows discovery and playback but denies all administration and secrets',async()=>{
+ const directory=await mkdtemp(path.join(scratch,'luma-app-'));const token='admin-'.repeat(10),appToken='device-'.repeat(10);
+ const {server}=await createBackend({directory,token,appToken});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
+ const call=(route,method='GET',body)=>fetch(origin+route,{method,headers:{Authorization:'Bearer '+appToken,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ try{
+  assert.equal((await call('/api/status')).status,200);
+  assert.equal((await call('/api/providers/demo.open-films/catalog')).status,200);
+  const result=await (await call('/api/search','POST',{query:'Sintel'})).json();assert.ok(result.results[0].items.length);
+  assert.equal((await call('/api/providers/demo.open-films/streams','POST',{link:'sintel',type:'movie'})).status,200);
+  for(const [route,method] of [['/api/providers/demo.open-films/settings','GET'],['/api/plugins/demo.open-films','PATCH'],['/api/plugins/demo.open-films','DELETE'],['/api/sources','POST'],['/api/plugins/install','POST'],['/api/status/extra','GET']])assert.equal((await call(route,method,method==='POST'||method==='PATCH'?{}:undefined)).status,403,route);
+  assert.equal((await fetch(origin+'/api/status',{headers:{Authorization:'Bearer wrong'}})).status,401);
+ }finally{await new Promise(resolve=>server.close(resolve));await cleanup(directory);}
+});
