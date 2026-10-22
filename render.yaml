@@ -1,0 +1,29 @@
+# Single-user preview on Render Free. No disk or paid service is provisioned.
+# Use this backend folder as repository root, or add rootDir: backend for a full app repo.
+services:
+  - type: web
+    name: luma-personal-backend
+    runtime: node
+    plan: free
+    region: singapore
+    numInstances: 1
+    buildCommand: npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev
+    startCommand: npm run start:free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: LUMA_HOST
+        value: 0.0.0.0
+      - key: LUMA_DATA_DIR
+        value: ./data
+      - key: LUMA_MAX_WORKERS
+        value: "1"
+      - key: LUMA_API_TOKEN
+        generateValue: true
+      - key: LUMA_BOOTSTRAP_REPOSITORY
+        value: https://github.com/Zenda-Cross/vega-providers/tree/9b41e2752d481d181afe7bd585eca1a5d51ddac6
+      - key: LUMA_BOOTSTRAP_PROVIDERS
+        value: autoEmbed

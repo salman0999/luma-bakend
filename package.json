@@ -1,0 +1,32 @@
+{
+  "name": "luma-provider-backend",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "start": "node dist/server.js",
+    "dev": "npm run build && npm start",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "pair": "node scripts/pair.mjs",
+    "start:lan": "node scripts/start-lan.mjs",
+    "bootstrap": "node dist/bootstrap.js",
+    "start:free": "npm run bootstrap && npm start"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "cheerio": "1.1.2",
+    "ipaddr.js": "^2.2.0",
+    "quickjs-emscripten": "0.31.0",
+    "undici": "7.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "~5.9.3"
+  }
+}
