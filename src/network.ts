@@ -1,3 +1,4 @@
+import type {Readable} from 'node:stream';
 import {lookup} from 'node:dns/promises';
 import {gunzipSync,inflateSync,brotliDecompressSync} from 'node:zlib';
 import {isIP} from 'node:net';
@@ -35,10 +36,10 @@ export async function safeRequest(config:HttpConfig,signal?:AbortSignal):Promise
    publicURL(url.href);
    const response=await request(url,{method:method as 'GET'|'POST'|'HEAD',headers,body,dispatcher,signal:abort,headersTimeout:15000,bodyTimeout:15000});
    const location=response.headers.location;
-   if([301,302,303,307,308].includes(response.statusCode)&&location){response.body.destroy();const next=publicURL(new URL(String(location),url).href);if(next.origin!==url.origin){headers=Object.fromEntries(Object.entries(headers).filter(([key])=>!['authorization','cookie','proxy-authorization'].includes(key.toLowerCase())));}if(response.statusCode===303||([301,302].includes(response.statusCode)&&method==='POST')){method='GET';body=undefined;}url=next;continue;}
-   if(response.statusCode>=400){response.body.destroy();throw new Error(`Upstream returned HTTP ${response.statusCode}.`);}
+   if([301,302,303,307,308].includes(response.statusCode)&&location){discardResponse(response.body);const next=publicURL(new URL(String(location),url).href);if(next.origin!==url.origin){headers=Object.fromEntries(Object.entries(headers).filter(([key])=>!['authorization','cookie','proxy-authorization'].includes(key.toLowerCase())));}if(response.statusCode===303||([301,302].includes(response.statusCode)&&method==='POST')){method='GET';body=undefined;}url=next;continue;}
+   if(response.statusCode>=400){discardResponse(response.body);throw new Error(`Upstream returned HTTP ${response.statusCode}.`);}
    let size=0;const chunks:Buffer[]=[];
-   for await(const chunk of response.body){size+=chunk.length;if(size>3*1024*1024){response.body.destroy();throw new Error('Provider response exceeded the 3 MB limit.');}chunks.push(Buffer.from(chunk));}
+   for await(const chunk of response.body){size+=chunk.length;if(size>3*1024*1024){discardResponse(response.body);throw new Error('Provider response exceeded the 3 MB limit.');}chunks.push(Buffer.from(chunk));}
    let bytes=Buffer.concat(chunks);const encoding=String(response.headers['content-encoding']||'').toLowerCase();if(encoding==='gzip')bytes=gunzipSync(bytes,{maxOutputLength:3*1024*1024});else if(encoding==='deflate')bytes=inflateSync(bytes,{maxOutputLength:3*1024*1024});else if(encoding==='br')bytes=brotliDecompressSync(bytes,{maxOutputLength:3*1024*1024});let data:unknown=bytes.toString('utf8');
    if(config.responseType==='arraybuffer')data={__binary:bytes.toString('base64')};
    else if(config.responseType!=='text'){try{data=JSON.parse(data as string);}catch{}}
@@ -47,3 +48,7 @@ export async function safeRequest(config:HttpConfig,signal?:AbortSignal):Promise
  }
  throw new Error('Too many redirects from provider.');
 }
+
+// Undici emits an abort error when an unread response is destroyed. Consume that
+// expected cancellation so redirects/errors cannot crash the server process.
+export function discardResponse(body:Readable){body.on('error',()=>{});body.destroy();}

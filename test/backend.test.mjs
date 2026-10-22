@@ -5,7 +5,9 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {execute} from '../dist/runtime.js';
 import {ProviderService,cleanStreams,sourceSpec} from '../dist/core.js';
-import {publicURL,publicIP,safeRequest} from '../dist/network.js';
+import {publicURL,publicIP,safeRequest,discardResponse} from '../dist/network.js';
+import {createServer} from 'node:http';
+import {request} from 'undici';
 import {createBackend,start} from '../dist/server.js';
 import {restoreProviders} from '../dist/bootstrap.js';
 import {workerLimit} from '../dist/worker-gate.js';
@@ -22,6 +24,14 @@ const scratch=fileURLToPath(new URL('./.tmp/',import.meta.url));await mkdir(scra
 async function cleanup(directory){assert.ok(path.resolve(directory).startsWith(path.resolve(scratch)+path.sep));await rm(directory,{recursive:true,force:true});}
 async function fixtureHTTP(config){if(config.url.includes('/commits/'))return {status:200,headers:{},url:config.url,data:{sha}};if(config.url.endsWith('/manifest.json'))return {status:200,headers:{},url:config.url,data:[{value:'test',display_name:'Fixture provider',version:'1.0'}]};const match=config.url.match(/\/(\w+)\.js$/);if(match&&fixture[match[1]])return {status:200,headers:{},url:config.url,data:fixture[match[1]]};throw new Error('404');}
 const runner=job=>execute({...job,timeoutMs:4000},fixtureHTTP);
+test('explicit commit revisions install without an unnecessary GitHub API lookup',async()=>{
+ const directory=await mkdtemp(path.join(scratch,'luma-pinned-'));
+ try{const service=new ProviderService(directory,config=>{assert.ok(!config.url.startsWith('https://api.github.com/'),'pinned revision should use raw content directly');return fixtureHTTP(config);},runner);await service.init();const source=await service.addSource('https://github.com/owner/providers/tree/'+sha);assert.equal(source.commit,sha);const plugin=await service.install(source.id,'test');assert.equal((await service.catalog(plugin.id)).data.length,1);}finally{await cleanup(directory);}
+});
+test('discarding a rejected unread HTTP body closes its stream without an unhandled abort',async()=>{
+ const server=createServer((req,res)=>{res.writeHead(403,{'Content-Type':'text/plain'});res.write('Denied');});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ try{const response=await request('http://127.0.0.1:'+server.address().port);assert.equal(response.statusCode,403);discardResponse(response.body);await new Promise(resolve=>setTimeout(resolve,20));assert.equal(response.body.destroyed,true);}finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});
 test('configured provider restores after an empty-disk restart, without reinstalling existing state',async()=>{
  const first=await mkdtemp(path.join(scratch,'luma-restore-one-')),second=await mkdtemp(path.join(scratch,'luma-restore-two-'));
  try{
